@@ -1,0 +1,131 @@
+DROP TABLE temp_order;
+DROP TABLE orderdetails;
+DROP TABLE temp_order_unique;
+DROP TABLE cust_no_list;
+-- Create a new table to hold the unique customer data
+CREATE TABLE temp_order AS SELECT * FROM orders;
+CREATE TABLE temp_order_unique AS SELECT * FROM orders WHERE 1=0;
+-- Create the cust_no_list table if it doesn't already exist
+CREATE TABLE cust_no_list (
+  row_id NUMBER,
+  customerNumber NUMBER(11)
+);
+
+-- Insert unique customerNumbers from customer_dim into cust_no_list
+INSERT INTO cust_no_list (row_id, customerNumber)
+SELECT ROWNUM, customerNumber
+FROM (
+  SELECT DISTINCT customerNumber
+  FROM customer_dim
+);
+
+-- Create a sequence to generate unique customer numbers starting from 500
+drop sequence order_number_sequence;
+
+CREATE SEQUENCE order_number_sequence
+  START WITH 10426
+  INCREMENT BY 1;
+
+-- Loop to insert 100,000 records into the temp_order table with unique customer numbers
+DECLARE
+-- Initialize v_record_count
+  v_counter NUMBER := 0;
+  v_cust_no NUMBER(11);
+  v_random_rowID NUMBER;
+BEGIN
+  WHILE v_counter < 350 LOOP
+    -- Assign a random row_id
+    v_random_rowID := TRUNC(DBMS_RANDOM.VALUE(1, 12323));
+
+    -- Get the customerNumber based on the random row_id
+    SELECT customerNumber INTO v_cust_no
+    FROM cust_no_list
+    WHERE row_id = v_random_rowID
+    AND customerNumber IS NOT NULL; -- Ensure non-NULL customerNumber
+
+    INSERT INTO temp_order_unique (orderNumber,orderDate,requiredDate,shippedDate,status,comments,customerNumber)
+    SELECT order_number_sequence.NEXTVAL,orderDate,requiredDate,shippedDate,status,comments,customerNumber
+    FROM orders;
+     
+    v_counter := v_counter + 1;
+  END LOOP;
+END;
+/
+
+SELECT COUNT(*) as "Records in temp_order_unique" FROM temp_order_unique;
+
+-- Append the generated records at the end of temp_order
+INSERT INTO temp_order
+SELECT * FROM temp_order_unique;
+
+-- Assign orderDate randomly
+
+--Generate orderDate
+drop table Gen_Date;
+
+create table Gen_Date
+(row_id number,
+orderDate date);
+
+set serveroutput on
+create or replace procedure proc_gen_date(in_start_Date IN varchar,
+			      in_end_Date IN varchar) IS
+  v_startDate date;
+  v_endDate   date;
+  v_counter number :=1; --so that row_id is starting from 1
+
+begin
+   v_startDate:=to_date(in_start_Date,'dd/mm/yyyy');
+   v_endDate  :=to_date(in_end_Date,'dd/mm/yyyy');
+
+   while (v_startDate<=v_endDate) loop
+       insert into Gen_Date values(v_counter,v_startDate);
+       v_counter:=v_counter+1;
+       v_startDate:= v_startDate+1;
+
+   end loop;
+dbms_output.put_line('Count is ' ||v_counter);
+end;
+/
+exec proc_gen_date('06/01/2021','31/05/2023'); 
+--Count is 877
+
+--update all the orderDate in temp_order record, random select from the Gen_Date 
+DECLARE
+    v_min_row_id NUMBER;
+    v_max_row_id NUMBER;
+    v_random_row_id NUMBER;
+    v_order_date DATE;
+BEGIN
+    -- Get the minimum and maximum row IDs from Gen_Date
+    SELECT MIN(row_id), MAX(row_id) INTO v_min_row_id, v_max_row_id FROM Gen_Date;
+
+    -- Loop through each row in temp_order
+    FOR rec IN (SELECT rowid, orderDate FROM temp_order) LOOP
+        -- Generate a random row ID between v_min_row_id and v_max_row_id
+        v_random_row_id := TRUNC(DBMS_RANDOM.VALUE(v_min_row_id, v_max_row_id));
+
+        -- Get the corresponding orderDate from Gen_Date
+        SELECT orderDate INTO v_order_date FROM Gen_Date WHERE row_id = v_random_row_id;
+
+        -- Update the orderDate for the current row in temp_order
+        UPDATE temp_order
+        SET orderDate = v_order_date
+        WHERE rowid = rec.rowid;
+    END LOOP;
+
+    COMMIT;
+END;
+/
+
+SELECT COUNT(*) as "Records in temp_order_unique" FROM temp_order_unique;
+
+SELECT COUNT(*) as "Records in temp_order" FROM temp_order;
+delete orders;
+--Insert temp_order into orders
+INSERT INTO orders (orderNumber, orderDate, requiredDate, shippedDate, status, comments, customerNumber)
+SELECT orderNumber, orderDate, requiredDate, shippedDate, status, comments, customerNumber
+FROM temp_order;
+
+SELECT COUNT(*) as "Records in orders" FROM orders;
+-- 114,426

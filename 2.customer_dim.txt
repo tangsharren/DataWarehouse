@@ -1,0 +1,396 @@
+SET LINESIZE 300;
+SET PAGESIZE 300;
+DROP TABLE sales_fact;
+DROP TABLE customer_dim;
+CREATE TABLE customer_dim (
+    customerKey         NUMBER(11) NOT NULL,
+    customerNumber      NUMBER(11) NOT NULL,
+    customerName        VARCHAR(50) NOT NULL,
+    contactLastName     VARCHAR(50) NOT NULL,
+    contactFirstName    VARCHAR(50) NOT NULL,
+    phone               VARCHAR(50) NOT NULL,
+    addressLine1        VARCHAR(50) NOT NULL,
+    addressLine2        VARCHAR(50),
+    city                VARCHAR(50) NOT NULL,
+    state               VARCHAR(50),
+    postalCode          VARCHAR(15),
+    country             VARCHAR(50) NOT NULL,
+    salesRepEmployeeNumber NUMBER(11),
+    creditLimit         NUMBER(9,2),
+    dob                 DATE        NOT NULL,
+    gender              CHAR(1) not null,
+    startDate           DATE,
+    endDate             DATE, 
+    status              VARCHAR(15) NOT NULL,--DEL/ACT
+    PRIMARY KEY (customerKey)
+);
+
+-- (i)Generate random DOB and store into a table
+--Generate DOB for customer 
+drop table Gen_DOB;
+
+create table Gen_DOB
+(row_id number,
+dob_date date);
+
+set serveroutput on
+create or replace procedure proc_gen_DOB(in_start_Date IN varchar,
+			      in_end_Date IN varchar) IS
+  v_startDate date;
+  v_endDate   date;
+  v_counter number :=1; --so that row_id is starting from 1
+
+begin
+   v_startDate:=to_date(in_start_Date,'dd/mm/yyyy');
+   v_endDate  :=to_date(in_end_Date,'dd/mm/yyyy');
+
+   while (v_startDate<=v_endDate) loop
+       insert into Gen_DOB values(v_counter,v_startDate);
+       v_counter:=v_counter+1;
+       v_startDate:= v_startDate+1;
+
+   end loop;
+dbms_output.put_line('Count is ' ||v_counter);
+end;
+/
+
+
+exec proc_gen_DOB('01/01/1950','01/01/2005'); 
+--Count is 20090 
+
+
+--(ii)Create state & city table 
+DROP TABLE StateAndCity;
+CREATE TABLE StateAndCity(
+  StateAndCityID        NUMBER(5),
+  City                  VARCHAR(30)   NOT NULL,
+  State                 VARCHAR(30)   NOT NULL,
+PRIMARY KEY (StateAndCityID)
+);
+
+
+INSERT INTO StateAndCity VALUES (10001, 'Johor Bahru', 'Johor');
+INSERT INTO StateAndCity VALUES (10002, 'Kluang', 'Johor');
+INSERT INTO StateAndCity VALUES (10003, 'Kota Tinggi', 'Johor');
+INSERT INTO StateAndCity VALUES (10004, 'Alor Setar', 'Kedah');
+INSERT INTO StateAndCity VALUES (10005, 'Langkawi', 'Kedah');
+INSERT INTO StateAndCity VALUES (10006, 'Bunut Payong', 'Kelantan');
+INSERT INTO StateAndCity VALUES (10007, 'Melaka', 'Melaka');
+INSERT INTO StateAndCity VALUES (10008, 'Port Dickson', 'Negeri Sembilan');
+INSERT INTO StateAndCity VALUES (10009, 'Seremban', 'Negeri Sembilan');
+INSERT INTO StateAndCity VALUES (10010, 'Genting Highlands', 'Pahang');
+INSERT INTO StateAndCity VALUES (10011, 'Kuala Lipis', 'Pahang');
+INSERT INTO StateAndCity VALUES (10012, 'Kuantan', 'Pahang');
+INSERT INTO StateAndCity VALUES (10013, 'Mentakab', 'Pahang');
+INSERT INTO StateAndCity VALUES (10014, 'Bidor', 'Perak');
+INSERT INTO StateAndCity VALUES (10015, 'Ipoh', 'Perak');
+INSERT INTO StateAndCity VALUES (10016, 'Kuala Perlis', 'Perlis');
+INSERT INTO StateAndCity VALUES (10017, 'Bukit Mertajam', 'Pulau Pinang');
+INSERT INTO StateAndCity VALUES (10018, 'Butterworth', 'Pulau Pinang');
+INSERT INTO StateAndCity VALUES (10019, 'GeorgeTown', 'Pulau Pinang');
+INSERT INTO StateAndCity VALUES (10020, 'Perai', 'Pulau Pinang');
+INSERT INTO StateAndCity VALUES (10021, 'Pulau Tikus', 'Pulau Pinang');
+INSERT INTO StateAndCity VALUES (10022, 'Seberang Perai', 'Pulau Pinang');
+INSERT INTO StateAndCity VALUES (10023, 'Kota Kinabalu', 'Sabah');
+INSERT INTO StateAndCity VALUES (10024, 'Tawau', 'Sabah');
+INSERT INTO StateAndCity VALUES (10025, 'Kapit', 'Sarawak');
+INSERT INTO StateAndCity VALUES (10026, 'Kuching', 'Sarawak');
+INSERT INTO StateAndCity VALUES (10027, 'Miri', 'Sarawak');
+INSERT INTO StateAndCity VALUES (10028, 'Sibu', 'Sarawak');
+INSERT INTO StateAndCity VALUES (10029, 'Ampang', 'Selangor');
+INSERT INTO StateAndCity VALUES (10030, 'Balakong', 'Selangor');
+INSERT INTO StateAndCity VALUES (10031, 'Banting', 'Selangor');
+INSERT INTO StateAndCity VALUES (10032, 'Kajang', 'Selangor');
+INSERT INTO StateAndCity VALUES (10033, 'Klang', 'Selangor');
+INSERT INTO StateAndCity VALUES (10034, 'Petaling Jaya', 'Selangor');
+INSERT INTO StateAndCity VALUES (10035, 'Rawang', 'Selangor');
+INSERT INTO StateAndCity VALUES (10036, 'Sepang', 'Selangor');
+INSERT INTO StateAndCity VALUES (10037, 'Seri Kembangan', 'Selangor');
+INSERT INTO StateAndCity VALUES (10038, 'Shah Alam', 'Selangor');
+INSERT INTO StateAndCity VALUES (10039, 'Subang Jaya', 'Selangor');
+INSERT INTO StateAndCity VALUES (10040, 'Cheras', 'Wilayah Persekutuan');
+INSERT INTO StateAndCity VALUES (10041, 'Kuala Lumpur', 'Wilayah Persekutuan');
+
+select count(*) as "No. of state and city" from StateAndCity;
+
+
+-- (iii)To generate > 10,000 records in the temp_cust_unique table with unique customerNumber values starting from 500 and incrementing by 1,
+DROP TABLE temp_cust;
+DROP TABLE temp_cust_unique;
+-- Create a new table to hold the unique customer data
+CREATE TABLE temp_cust AS SELECT * FROM customers;
+CREATE TABLE temp_cust_unique AS SELECT * FROM customers WHERE 1=0;
+
+-- Create a sequence to generate unique customer numbers starting from 500
+drop sequence cust_number_sequence;
+CREATE SEQUENCE cust_number_sequence
+  START WITH 500
+  INCREMENT BY 1;
+
+-- Loop to insert 10,000 records into the temp_cust table with unique customer numbers
+DECLARE
+-- Initialize v_record_count
+  v_counter NUMBER := 0;
+BEGIN
+  WHILE v_counter < 100 LOOP
+    INSERT INTO temp_cust_unique (customerNumber, customerName, contactLastName, contactFirstName, phone, addressLine1, addressLine2, city, state, postalCode, country, salesRepEmployeeNumber, creditLimit)
+    SELECT cust_number_sequence.NEXTVAL, customerName, contactLastName, contactFirstName, phone, addressLine1, addressLine2, city, state, postalCode, country, salesRepEmployeeNumber, creditLimit
+    FROM customers;
+    
+    v_counter := v_counter + 1;
+  END LOOP;
+END;
+/
+-- Append the generated records at the end of temp_cust
+INSERT INTO temp_cust
+SELECT * FROM temp_cust_unique;
+
+
+SELECT COUNT(*) as "Records in temp_cust" FROM temp_cust;
+
+--(iv) Assign the random DOB, gender, state & city to new_cust, 
+--Generate updated records for some customer and assign random endDate(must be > startDate), assign the old record’s ‘status’ as del
+
+DROP TABLE new_cust;
+CREATE TABLE new_cust AS SELECT * FROM customer_dim WHERE 1=0;
+
+drop sequence cust_sequence;
+create sequence cust_sequence
+start with 100001
+increment by 1;
+DECLARE
+  CURSOR cust_cur IS
+    SELECT *
+    FROM temp_cust
+    ORDER BY customerNumber;
+
+  t_rec cust_cur%ROWTYPE;
+
+  v_random_rowID NUMBER;
+  v_dob DATE;
+  v_ID NUMBER;
+  v_city VARCHAR(30);
+  v_state VARCHAR(30);
+  v_gender CHAR(1);
+  v_startDate DATE;
+  v_endDate DATE;
+  v_status VARCHAR2(3); -- Assuming status is a VARCHAR2(3) field
+
+  -- Variables for controlling the percentage of records with endDate
+  v_records_count NUMBER := 0;
+  v_records_with_endDate NUMBER;
+  v_percentage NUMBER := 20; -- Change this to set the desired percentage
+
+BEGIN
+  -- Get the total number of records
+  SELECT COUNT(*) as "Records in temp_cust" INTO v_records_count FROM temp_cust;
+
+  -- Calculate the number of records with endDate
+  v_records_with_endDate := ROUND(v_records_count * v_percentage / 100);
+
+  FOR t_rec IN cust_cur LOOP
+
+    -- Assign DOB randomly
+    v_random_rowID := TRUNC(DBMS_RANDOM.VALUE(1, 20091));
+    SELECT dob_date INTO v_dob
+    FROM Gen_DOB
+    WHERE row_id = v_random_rowID;
+
+    -- Assign state and city randomly
+    -- Generate a random v_ID within a valid range
+    v_ID := TRUNC(DBMS_RANDOM.VALUE(10001, 10042));
+
+    -- Query the StateAndCity table to get city and state for the generated v_ID
+    SELECT city, state INTO v_city, v_state
+    FROM StateAndCity
+    WHERE StateAndCityID = v_ID;
+
+    -- Assign gender randomly
+    IF (MOD(v_random_rowID, 2) = 0) THEN
+      v_gender := 'M';
+    ELSE
+      v_gender := 'F';
+    END IF;
+
+    -- Generate a random number of days to add to the start date
+    v_startDate := TO_DATE('01/01/2020', 'DD/MM/YYYY') + TRUNC(DBMS_RANDOM.VALUE(1, TO_DATE('01/01/2022', 'DD/MM/YYYY') - TO_DATE('01/01/2000', 'DD/MM/YYYY')));
+
+    -- Determine if this record should have an endDate
+    -- Using MOD so that it randomly assign the records as status = 'DEL'
+    IF v_records_with_endDate > 0 AND MOD(t_rec.customerNumber, 5) = 0 THEN
+      -- Generate a random endDate greater than startDate
+      v_endDate := v_startDate + TRUNC(DBMS_RANDOM.VALUE(1, 365)); -- Adjust the range as needed
+      v_records_with_endDate := v_records_with_endDate - 1;
+      
+      -- Assign status as 'DEL' for records with endDate
+      v_status := 'DEL';
+    ELSE
+      v_endDate := NULL; -- No endDate for this record
+      v_status := 'ACT';  -- Status is active for records without endDate
+    END IF;
+
+    -- Insert into new_cust
+    INSERT INTO new_cust (
+      customerKey,
+      customerNumber,
+      customerName,
+      contactLastName,
+      contactFirstName,
+      phone,
+      addressLine1,
+      addressLine2,
+      city,
+      state,
+      postalCode,
+      country,
+      salesRepEmployeeNumber,
+      creditLimit,
+      dob,
+      gender,
+      startDate,
+      endDate,
+      status
+    )
+    VALUES (
+      cust_sequence.NEXTVAL,
+      t_rec.customerNumber,
+      t_rec.customerName,
+      t_rec.contactLastName,
+      t_rec.contactFirstName,
+      t_rec.phone,
+      t_rec.addressLine1,
+      t_rec.addressLine2,
+      v_city,
+      v_state,
+      t_rec.postalCode,
+      t_rec.country,
+      t_rec.salesRepEmployeeNumber,
+      t_rec.creditLimit,
+      v_dob,
+      v_gender,
+      v_startDate,
+      v_endDate,
+      v_status
+    );
+  END LOOP;
+END;
+/
+
+SELECT COUNT(*) as "Status = DEL(new_cust)"
+FROM new_cust
+WHERE status = 'DEL';
+-- 20% * 12,200 = 2,440 
+
+--(v) Generate random phone number with length of 10 for customer records with status 'DEL'
+-- Create the updated_cust table if it doesn't already exist
+DROP TABLE update_cust;
+CREATE TABLE update_cust AS
+SELECT *
+FROM new_cust
+WHERE status = 'DEL';
+
+-- Update the status, endDate and phone for all rows in the updated_cust table
+UPDATE update_cust
+SET status = 'ACT',
+    endDate = NULL,
+    phone = LPAD(TRUNC(DBMS_RANDOM.VALUE(0, 9999999999)), 10, '0');
+
+-- Insert all rows from update_cust into new_cust with cust_sequence.NEXTVAL as customerKey
+INSERT INTO new_cust (
+  customerKey,
+  customerNumber,
+  customerName,
+  contactLastName,
+  contactFirstName,
+  phone,
+  addressLine1,
+  addressLine2,
+  city,
+  state,
+  postalCode,
+  country,
+  salesRepEmployeeNumber,
+  creditLimit,
+  dob,
+  gender,
+  startDate,
+  endDate,
+  status
+)
+SELECT
+  cust_sequence.NEXTVAL,
+  customerNumber,
+  customerName,
+  contactLastName,
+  contactFirstName,
+  phone,
+  addressLine1,
+  addressLine2,
+  city,
+  state,
+  postalCode,
+  country,
+  salesRepEmployeeNumber,
+  creditLimit,
+  dob,
+  gender,
+  startDate,
+  endDate,
+  status
+FROM update_cust;
+
+-- (vi) Copy data in new_cust to customer_dim 
+ drop sequence cust_seq;
+ create sequence cust_seq
+ start with 100001
+ increment by 1;
+
+delete customer_dim;
+-- ETL for customer_dim
+ insert into customer_dim
+ select cust_seq.nextval,
+        customerNumber,
+        upper(substr(customerName,1,50)),
+        upper(substr(contactLastName,1,50)),
+        upper(substr(contactFirstName,1,50)),
+        phone,
+        upper(substr(addressLine1,1,50)),
+        upper(substr(addressLine2,1,50)),
+        upper(city),
+        upper(state),
+        postalCode,
+        upper(country),
+        salesRepEmployeeNumber,
+        creditLimit,
+        dob,
+        upper(gender),
+        startDate,
+        endDate,
+        status
+ from new_cust;
+
+
+-- (iv) Update all country into Malaysia
+UPDATE customer_dim
+SET country = 'Malaysia';
+
+SELECT COUNT(*) as "Customer_dim total" FROM customer_dim;
+--Old record: With an endDate and status is 'DEL'
+SELECT COUNT(*) as "Status = DEL"
+FROM customer_dim
+WHERE status = 'DEL';
+--14780ge
+SELECT COUNT(*) as "endDate NOT NULL"
+FROM customer_dim
+WHERE endDate IS NOT NULL;
+
+--Active record: Without endDate and status is 'ACT'
+SELECT COUNT(*) as "Status = ACT"
+FROM customer_dim
+WHERE status = 'ACT';
+
+SELECT COUNT(*) as "endDate is NULL"
+FROM customer_dim
+WHERE endDate IS NULL;
+
+COMMIT;

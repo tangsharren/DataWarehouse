@@ -1,0 +1,74 @@
+ALTER SESSION SET NLS_DATE_FORMAT='YYYY-MM-DD';
+
+DROP TABLE sales_fact; 
+CREATE TABLE sales_fact (
+    salesKey            NUMBER(11) NOT NULL,
+    productKey          NUMBER(11) NOT NULL,
+    customerKey         NUMBER(11) NOT NULL,
+    dateKey             NUMBER NOT NULL,
+    employeeKey         NUMBER(11) NOT NULL,
+    officeKey           NUMBER(11) NOT NULL,
+    orderStatus         VARCHAR(15) NOT NULL,
+    quantityOrdered     NUMBER(4) NOT NULL,
+    priceEach           NUMBER(7,2) NOT NULL,
+    totalAmount         NUMBER(10,2) NOT NULL,
+    PRIMARY KEY (salesKey),
+    FOREIGN KEY (productKey) REFERENCES product_dim(productKey),
+    FOREIGN KEY (customerKey) REFERENCES customer_dim(customerKey),
+    FOREIGN KEY (dateKey) REFERENCES date_dim(date_key),
+    FOREIGN KEY (employeeKey) REFERENCES employee_dim(employeeKey),
+    FOREIGN KEY (officeKey) REFERENCES office_dim(officeKey)
+);
+
+
+ drop sequence sales_seq;
+ create sequence sales_seq
+ start with 100001
+ increment by 1;
+ DELETE sales_fact;
+
+-- ETL for sales_fact
+-- Generate a sequence of salesKey values using sales_seq
+-- Insert data into sales_fact from orders, orderdetails, and other source tables
+INSERT INTO sales_fact (
+    salesKey,
+    productKey,
+    customerKey,
+    dateKey,
+    employeeKey,
+    officeKey,
+    orderStatus,
+    quantityOrdered,
+    priceEach,
+    totalAmount
+)
+SELECT 
+sales_seq.nextval,
+p.productKey,
+c.customerKey,
+d.date_key,
+e.employeeKey,
+f.officeKey,
+o.status,
+od.quantityOrdered,
+od.priceEach,
+(od.quantityOrdered * od.priceEach)
+FROM orders o, 
+orderdetails od, 
+product_dim p,
+customer_dim c,
+date_dim d, 
+employee_dim e,
+office_dim f
+WHERE o.orderNumber = od.orderNumber 
+AND od.productCode = p.productCode
+AND o.customerNumber = c.customerNumber
+AND o.orderDate = d.cal_date
+AND c.salesRepEmployeeNumber = e.employeeNumber
+AND e.officeCode = f.officeCode;
+
+select count(*) as "sales_fact total" 
+from sales_fact;
+--356365
+
+COMMIT;

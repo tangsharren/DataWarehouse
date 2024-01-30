@@ -1,0 +1,89 @@
+-- Drop existing temporary tables if they exist
+DROP TABLE temp_orderDetails;
+DROP TABLE temp_orderDetails_unique;
+DROP TABLE order_no_list;
+
+-- Create a new table to hold the unique orderNumber values
+CREATE TABLE temp_orderDetails AS SELECT * FROM orderDetails;
+CREATE TABLE temp_orderDetails_unique AS SELECT * FROM orderDetails WHERE 1=0;
+-- Create the order_no_list table if it doesn't already exist
+CREATE TABLE order_no_list (
+  row_id NUMBER,
+  orderNumber NUMBER(11)
+);
+
+-- Insert unique orderNumbers from orders into order_no_list
+INSERT INTO order_no_list (row_id, orderNumber)
+SELECT ROWNUM, orderNumber
+FROM (
+  SELECT DISTINCT orderNumber
+  FROM orders
+);
+DECLARE
+  v_random_rowID NUMBER;
+  v_order_no NUMBER;
+  v_product_id NUMBER;
+  v_product_code VARCHAR2(15);
+  v_quantity NUMBER;
+  v_price NUMBER;
+  v_order_line NUMBER;
+  v_counter NUMBER := 0;
+BEGIN
+  WHILE v_counter < 320000 LOOP
+    -- Generate a random product_id between 100001 and the maximum productKey
+    SELECT TRUNC(DBMS_RANDOM.VALUE(100001, (SELECT MAX(productKey) FROM product_dim)))
+    INTO v_product_id
+    FROM DUAL;
+
+    -- Generate a random row_id between 1 and 114426 (MAX(ROW_ID) from order_no_list)
+    v_random_rowID := TRUNC(DBMS_RANDOM.VALUE(1, 114427));
+
+    -- Get the orderNumber based on the random row_id
+    SELECT orderNumber INTO v_order_no
+    FROM order_no_list
+    WHERE row_id = v_random_rowID;
+
+    -- Get the productCode based on the random product_id
+    SELECT productCode INTO v_product_code
+    FROM product_dim
+    WHERE productKey = v_product_id;
+
+    -- Generate random values for quantityOrdered, priceEach, and orderLineNumber
+    v_quantity := TRUNC(DBMS_RANDOM.VALUE(1, 10)); -- Adjust the range as needed
+    v_price := ROUND(DBMS_RANDOM.VALUE(10, 1000), 2); -- Adjust the range as needed
+    v_order_line := TRUNC(DBMS_RANDOM.VALUE(1, 10)); -- Adjust the range as needed
+
+    -- Insert the record into the temp_orderDetails_unique table if the combination is unique
+    INSERT INTO temp_orderDetails_unique (orderNumber, productCode, quantityOrdered, priceEach, orderLineNumber)
+    SELECT v_order_no, v_product_code, v_quantity, v_price, v_order_line
+    FROM DUAL
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM temp_orderDetails_unique t
+      WHERE t.orderNumber = v_order_no AND t.productCode = v_product_code
+    );
+
+    v_counter := v_counter + 1;
+  END LOOP;
+END;
+/
+
+select count(*) as "temp_orderDetails_unique" from temp_orderDetails_unique;
+select count(*) as "temp_orderDetails" from temp_orderDetails;
+
+-- Append the records in temp_orderDetails_unique at the end of orderDetails
+
+select count(*) as "orderDetails" from orderDetails;
+-- Append unique records from temp_orderDetails_unique into orderDetails
+INSERT INTO orderDetails (orderNumber, productCode, quantityOrdered, priceEach, orderLineNumber)
+SELECT t.orderNumber, t.productCode, t.quantityOrdered, t.priceEach, t.orderLineNumber
+FROM temp_orderDetails_unique t
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM orderDetails o
+  WHERE o.orderNumber = t.orderNumber
+  AND o.productCode = t.productCode
+);
+
+select count(*) as "orderDetails" from orderDetails;
+--318922

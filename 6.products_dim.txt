@@ -1,0 +1,39 @@
+DROP TABLE product_dim;
+CREATE TABLE product_dim (
+    productKey          NUMBER(11) NOT NULL,
+    productCode         VARCHAR(15) NOT NULL,
+    productName         VARCHAR(70) NOT NULL,
+    productLine         VARCHAR(50) NOT NULL,
+    productScale        VARCHAR(10) NOT NULL,
+    productVendor       VARCHAR(50) NOT NULL,
+    productDescription  VARCHAR(4000) NOT NULL,
+    quantityInStock     NUMBER(4) NOT NULL,
+    buyPrice            NUMBER(7,2) NOT NULL,
+    MSRP                NUMBER(7,2) NOT NULL,
+    PRIMARY KEY (productKey)
+);
+
+-- (i) Copy data in products to product_dim 
+ drop sequence product_seq;
+ create sequence product_seq
+ start with 100001
+ increment by 1;
+delete product_dim;
+-- ETL for product_dim
+ insert into product_dim
+ select product_seq.nextval,
+        productCode,
+        upper(substr(productName,1,70)),
+        upper(substr(productLine,1,50)),
+        productScale,
+        upper(substr(productVendor,1,50)),
+        upper(substr(productDescription,1,4000)),
+        quantityInStock,
+        buyPrice, 
+        MSRP
+ from products;
+
+select count(*) as "product_dim total" 
+from product_dim;
+--110 rows
+COMMIT;

@@ -1,0 +1,295 @@
+SET LINESIZE 300;
+SET PAGESIZE 300;
+
+DROP TABLE employee_dim;
+
+CREATE TABLE employee_dim (
+    employeeKey         NUMBER(11) NOT NULL,
+    employeeNumber      NUMBER(11) NOT NULL,
+    lastName            VARCHAR(50) NOT NULL,
+    firstName           VARCHAR(50) NOT NULL,
+    extension           VARCHAR(10),
+    email               VARCHAR(100),
+    officeCode          VARCHAR(10),
+    reportsTo           NUMBER(11),
+    jobTitle            VARCHAR(50),
+    dob                 DATE        NOT NULL,
+    gender              CHAR(1)     NOT NULL,
+    startDate           DATE, 
+    endDate             DATE,     
+    status              VARCHAR(15) NOT NULL,--DEL/ACT
+    PRIMARY KEY (employeeKey)
+);
+
+-- (i)Generate random DOB and store into a table
+-- In employee_dim steps, we have done exec proc_gen_DOB('01/01/1950','01/01/2005'); 
+-- Minimum row_id
+SELECT MIN(row_id) AS "Min. row_id in GEN_DOB"
+FROM Gen_DOB;
+
+-- Maximum row_id
+SELECT MAX(row_id) AS "Max. row_id in GEN_DOB"
+FROM Gen_DOB;
+--Min is 1, max is 20090 
+
+--(ii)Save unique employee number into a table GEN_EMP
+-- Create the GEN_EMP table
+DROP TABLE GEN_EMP;
+-- Create the GEN_EMP table with a row_id column
+CREATE TABLE GEN_EMP AS
+SELECT ROWNUM AS row_id, employeeNumber
+FROM (
+    SELECT DISTINCT employeeNumber
+    FROM employees
+);
+
+-- view the contents of the GEN_EMP table
+SELECT count(*) as "GEN_EMP contents" FROM GEN_EMP;
+
+
+-- (iii)To generate > 10,000 records in the temp_emp table with unique employeeNumber values starting from 500 and incrementing by 1,
+DROP TABLE temp_emp;
+DROP TABLE temp_emp_unique;
+-- Create a new table to hold the unique employee data
+CREATE TABLE temp_emp AS SELECT * FROM employees;
+CREATE TABLE temp_emp_unique AS SELECT * FROM employees WHERE 1=0;
+
+-- Create a sequence to generate unique employee numbers starting from 1703
+drop sequence emp_number_sequence;
+CREATE SEQUENCE emp_number_sequence
+  START WITH 1703
+  INCREMENT BY 1;
+
+-- Loop to insert 10,000 records into the temp_emp table with unique customer numbers
+DECLARE
+-- Initialize v_record_count
+  v_counter NUMBER := 0;
+BEGIN
+  WHILE v_counter < 500 LOOP
+    INSERT INTO temp_emp (employeeNumber, lastName, firstName, extension, email, officeCode, reportsTo, jobTitle)
+    SELECT emp_number_sequence.NEXTVAL, lastName, firstName, extension, email, officeCode, reportsTo, jobTitle
+    FROM employees;
+    
+    v_counter := v_counter + 1;
+  END LOOP;
+END;
+/
+-- Append the generated records at the end of temp_emp
+INSERT INTO temp_emp
+SELECT * FROM temp_emp_unique;
+SELECT COUNT(*) as "Records in temp_emp" FROM temp_emp;
+-- 11500
+
+--(iv) Assign the random DOB, gender to new_emp, 
+--Generate updated records for some employee and assign random endDate(must be > startDate), assign the old record’s ‘status’ as del
+
+DROP TABLE new_emp;
+CREATE TABLE new_emp AS SELECT * FROM employee_dim WHERE 1=0;
+
+drop sequence emp_sequence;
+create sequence emp_sequence
+start with 100001
+increment by 1;
+DECLARE
+  CURSOR emp_cur IS
+    SELECT *
+    FROM temp_emp
+    ORDER BY employeeNumber;
+
+  t_rec emp_cur%ROWTYPE;
+
+  v_random_rowID NUMBER;
+  v_dob DATE;
+  v_random_reportsTo  NUMBER;
+
+  v_gender CHAR(1);
+  v_startDate DATE;
+  v_endDate DATE;
+  v_status VARCHAR2(3); -- Assuming status is a VARCHAR2(3) field
+
+  -- Variables for controlling the percentage of records with endDate
+  v_records_count NUMBER := 0;
+  v_records_with_endDate NUMBER;
+  v_percentage NUMBER := 15; -- Change this to set the desired percentage
+  v_counter NUMBER := 0; -- Counter variable to keep track of the row number in new_emp
+
+BEGIN
+  -- Get the total number of records
+  SELECT COUNT(*) as "Records in temp_emp" INTO v_records_count FROM temp_emp;
+
+  -- Calculate the number of records with endDate
+  v_records_with_endDate := ROUND(v_records_count * v_percentage / 100);
+
+  FOR t_rec IN emp_cur LOOP
+
+    -- Assign DOB randomly
+    v_random_rowID := TRUNC(DBMS_RANDOM.VALUE(1, 20091));
+    SELECT dob_date INTO v_dob
+    FROM Gen_DOB
+    WHERE row_id = v_random_rowID;
+
+    -- Assign gender randomly
+    IF (MOD(v_random_rowID, 2) = 0) THEN
+      v_gender := 'M';
+    ELSE
+      v_gender := 'F';
+    END IF;
+
+    -- Generate a random number of days to add to the start date
+    v_startDate := TO_DATE('01/01/2020', 'DD/MM/YYYY') + TRUNC(DBMS_RANDOM.VALUE(1, TO_DATE('01/01/2022', 'DD/MM/YYYY') - TO_DATE('01/01/2000', 'DD/MM/YYYY')));
+
+    -- Determine if this record should have an endDate
+    IF v_records_with_endDate > 0 AND v_counter > 23  AND MOD(t_rec.employeeNumber, 5) = 0 THEN
+      -- Generate a random endDate greater than startDate
+      v_endDate := v_startDate + TRUNC(DBMS_RANDOM.VALUE(1, 365)); -- Adjust the range as needed
+      v_records_with_endDate := v_records_with_endDate - 1;
+      
+      -- Assign status as 'DEL' for records with endDate
+      v_status := 'DEL';
+    ELSE
+      v_endDate := NULL; -- No endDate for this record
+      v_status := 'ACT';  -- Status is active for records without endDate
+    END IF;
+    v_counter := v_counter + 1;
+
+    -- Insert into new_emp
+    INSERT INTO new_emp (
+      employeeKey,
+      employeeNumber,
+      lastName,
+      firstName,
+      extension,
+      email,
+      officeCode,
+      reportsTo,
+      jobTitle,
+      dob,
+      gender,
+      startDate,
+      endDate,
+      status
+    )
+
+    VALUES (
+      emp_sequence.NEXTVAL,
+      t_rec.employeeNumber,
+      t_rec.lastName,
+      t_rec.firstName,
+      t_rec.extension,
+      t_rec.email,
+      t_rec.officeCode,
+      t_rec.reportsTo,
+      t_rec.jobTitle,
+      v_dob,
+      v_gender,
+      v_startDate,
+      v_endDate,
+      v_status
+    );
+  END LOOP;
+END;
+/
+
+SELECT COUNT(*) as "Status = DEL(new_emp)"
+FROM new_emp
+WHERE status = 'DEL';
+-- 15% * 11,500 = 1725
+
+--(v) Generate random reportsTo for employee with status 'DEL'
+-- Create the update_emp table if it doesn't already exist
+DROP TABLE update_emp;
+CREATE TABLE update_emp AS
+SELECT *
+FROM new_emp
+WHERE status = 'DEL';
+
+-- Update the status, endDate, and reportsTo for all rows in the updated_emp table
+UPDATE update_emp
+SET status = 'ACT',
+    endDate = NULL,
+    reportsTo = (
+      SELECT employeeNumber
+      FROM GEN_EMP
+      WHERE row_id = TRUNC(DBMS_RANDOM.VALUE(1, 24))
+      AND ROWNUM = 1
+    );
+
+-- Insert all rows from update_emp into new_emp with emp_sequence.NEXTVAL as customerKey
+INSERT INTO new_emp (
+    employeeKey,
+    employeeNumber,
+    lastName,
+    firstName,
+    extension,
+    email,
+    officeCode,
+    reportsTo,
+    jobTitle,
+    dob,
+    gender,
+    startDate,
+    endDate,
+    status
+)
+SELECT
+  emp_sequence.NEXTVAL,
+  employeeNumber,
+  lastName,
+  firstName,
+  extension,
+  email,
+  officeCode,
+  reportsTo,
+  jobTitle,
+  dob,
+  gender,
+  startDate,
+  endDate,
+  status
+FROM update_emp;
+
+-- (vi) Copy data in new_emp to employee_dim 
+delete employee_dim;
+ drop sequence emp_seq;
+ create sequence emp_seq
+ start with 100001
+ increment by 1;
+
+-- ETL for employee_dim
+ insert into employee_dim
+ select emp_seq.nextval,
+        employeeNumber,
+        upper(substr(lastName,1,50)),
+        upper(substr(firstName,1,50)),
+        upper(extension),
+        upper(email),
+        officeCode,
+        reportsTo,
+        jobTitle,
+        dob,
+        upper(gender),
+        startDate,
+        endDate,
+        status
+ from new_emp;
+
+SELECT COUNT(*) as "employee_dim total" FROM employee_dim;
+--Old record: With an endDate and status is 'DEL'
+SELECT COUNT(*) as "Status = DEL"
+FROM employee_dim
+WHERE status = 'DEL';
+
+SELECT COUNT(*) as "endDate NOT NULL"
+FROM employee_dim
+WHERE endDate IS NOT NULL;
+
+--Active record: Without endDate and status is 'ACT'
+SELECT COUNT(*) as "Status = ACT"
+FROM employee_dim
+WHERE status = 'ACT';
+
+SELECT COUNT(*) as "endDate is NULL"
+FROM employee_dim
+WHERE endDate IS NULL;
+
+COMMIT;

@@ -1,0 +1,270 @@
+DROP TABLE date_dim;
+delete date_dim;
+CREATE TABLE date_dim (
+       date_key             NUMBER NOT NULL,
+       cal_date             DATE NOT NULL,
+       year                 NUMBER(4) NOT NULL,
+       quarter              CHAR(2) NOT NULL,
+       month                CHAR(15) NOT NULL,
+       month_no             NUMBER(2) NOT NULL,
+       holiday_ind          CHAR(1) NOT NULL,
+       weekday_ind          CHAR(1) NOT NULL,
+       festive_desc        VARCHAR(20),
+       PRIMARY KEY (date_key)
+);
+
+-- (i)Change all dates in orders table to be starting from Jan 2021 till May 2023 instead
+
+-- Update order dates to bring them forward to the current date
+-- 2023-2005 = 18 years
+-- 18 years * 12 months = 216 months
+UPDATE orders
+SET orderDate = ADD_MONTHS(orderDate, 216),
+    requiredDate = ADD_MONTHS(requiredDate, 216),
+    shippedDate = ADD_MONTHS(shippedDate, 216);
+
+-- Drop the sequence if it already exists
+DROP SEQUENCE date_seq;
+
+-- Create a new sequence for date_dim
+CREATE SEQUENCE date_seq
+START WITH 10001
+INCREMENT BY 1;
+
+declare
+   v_startDate date;
+   v_endDate date;
+   v_cal_date date;
+   v_year number(4);
+   v_quarter char(2);
+   v_month varchar(15);
+   v_holiday_ind char(1);
+   v_weekday_ind  char(1);
+   v_festive varchar(10);
+   v_month_no number(2);
+
+begin
+   v_holiday_ind := 'N';
+
+   -- Set v_startDate and v_endDate based on orders table
+   select min(orderDate), max(orderDate) into v_startDate, v_endDate from orders;
+
+   WHILE (v_startDate <= v_endDate) LOOP
+      v_cal_date := v_startDate;
+      v_year := TO_NUMBER(TO_CHAR(v_startDate, 'YYYY'));
+      v_quarter := CASE
+                     WHEN TO_NUMBER(TO_CHAR(v_startDate, 'MM')) BETWEEN 1 AND 3 THEN 'Q1'
+                     WHEN TO_NUMBER(TO_CHAR(v_startDate, 'MM')) BETWEEN 4 AND 6 THEN 'Q2'
+                     WHEN TO_NUMBER(TO_CHAR(v_startDate, 'MM')) BETWEEN 7 AND 9 THEN 'Q3'
+                     WHEN TO_NUMBER(TO_CHAR(v_startDate, 'MM')) BETWEEN 10 AND 12 THEN 'Q4'
+                  END;
+      v_month := TO_CHAR(v_startDate, 'Month');
+      v_weekday_ind := CASE
+                          WHEN TO_CHAR(v_startDate, 'D') BETWEEN 2 AND 6 THEN 'Y'-- Weekday (Monday to Friday)
+                          ELSE 'N' -- Weekend (Saturday and Sunday)
+                       END;
+
+       -- Calculate the month number
+       v_month_no := TO_NUMBER(TO_CHAR(v_startDate, 'MM'));
+
+       insert into date_dim values(date_seq.nextval,
+                                   v_cal_date,
+                                   v_year,
+                                   v_quarter,
+                                   v_month,
+                                   v_month_no,
+                                   v_holiday_ind ,
+                                   v_weekday_ind ,
+                                   null);
+
+      v_startDate := v_startDate + 1;
+   end loop;
+
+end;
+/
+
+-- (ii)Assign Malaysia holiday
+--In 2021
+-- Update HOLIDAY_IND for 2021 based on provided holiday dates
+UPDATE date_dim
+SET HOLIDAY_IND = 'Y'
+WHERE year = 2021
+AND cal_date IN (
+    TO_DATE('2021-01-01', 'YYYY-MM-DD'),  -- New Year's Day
+    TO_DATE('2021-01-28', 'YYYY-MM-DD'),  -- Thaipusam
+    TO_DATE('2021-02-12', 'YYYY-MM-DD'),  -- CNY
+    TO_DATE('2021-02-13', 'YYYY-MM-DD'),  -- CNY
+    TO_DATE('2021-02-14', 'YYYY-MM-DD'),  -- CNY
+    TO_DATE('2021-04-13', 'YYYY-MM-DD'),  -- Awal Ramadan
+    TO_DATE('2021-04-29', 'YYYY-MM-DD'),  -- Nuzul Al-Quran
+    TO_DATE('2021-05-01', 'YYYY-MM-DD'),  -- Labour Day
+    TO_DATE('2021-05-13', 'YYYY-MM-DD'),  -- Hari Raya Aidilfitri
+    TO_DATE('2021-05-14', 'YYYY-MM-DD'),  -- Hari Raya Aidilfitri Holiday
+    TO_DATE('2021-05-26', 'YYYY-MM-DD'),  -- Wesak Day
+    TO_DATE('2021-06-07', 'YYYY-MM-DD'),  -- Agong's Birthday
+    TO_DATE('2021-07-20', 'YYYY-MM-DD'),  -- Hari Raya Haji
+    TO_DATE('2021-08-10', 'YYYY-MM-DD'),  -- Awal Muharram
+    TO_DATE('2021-08-31', 'YYYY-MM-DD'),  -- Merdeka Day
+    TO_DATE('2021-09-16', 'YYYY-MM-DD'),  -- Malaysia Day
+    TO_DATE('2021-10-19', 'YYYY-MM-DD'),  -- Prophet Muhammad's Birthday
+    TO_DATE('2021-12-25', 'YYYY-MM-DD'),  -- Christmas Day
+    TO_DATE('2021-12-26', 'YYYY-MM-DD')   -- Christmas Day
+);
+
+
+-- Update HOLIDAY_IND for 2022 based on provided holiday dates
+UPDATE date_dim
+SET HOLIDAY_IND = 'Y'
+WHERE year = 2022
+AND cal_date IN (
+    TO_DATE('2022-01-01', 'YYYY-MM-DD'),  -- New Year's Day
+    TO_DATE('2022-01-18', 'YYYY-MM-DD'),  -- Thaipusam
+    TO_DATE('2022-02-01', 'YYYY-MM-DD'),  -- Chinese New Year
+    TO_DATE('2022-02-02', 'YYYY-MM-DD'),  -- Chinese New Year Holiday
+    TO_DATE('2022-04-19', 'YYYY-MM-DD'),  -- Nuzul Al-Quran
+    TO_DATE('2022-05-01', 'YYYY-MM-DD'),  -- Labour Day
+    TO_DATE('2022-05-02', 'YYYY-MM-DD'),  -- Hari Raya Aidilfitri
+    TO_DATE('2022-05-03', 'YYYY-MM-DD'),  -- Hari Raya Aidilfitri Holiday
+    TO_DATE('2022-05-04', 'YYYY-MM-DD'),  -- Labour Day Holiday
+    TO_DATE('2022-05-15', 'YYYY-MM-DD'),  -- Wesak Day
+    TO_DATE('2022-05-16', 'YYYY-MM-DD'),  -- Wesak Day Holiday
+    TO_DATE('2022-06-06', 'YYYY-MM-DD'),  -- Agong's Birthday
+    TO_DATE('2022-07-10', 'YYYY-MM-DD'),  -- Hari Raya Haji
+    TO_DATE('2022-08-31', 'YYYY-MM-DD'),  -- Merdeka Day
+    TO_DATE('2022-09-16', 'YYYY-MM-DD'),  -- Malaysia Day
+    TO_DATE('2022-10-09', 'YYYY-MM-DD'),  -- Prophet Muhammad's Birthday
+    TO_DATE('2022-10-10', 'YYYY-MM-DD'),  -- Prophet Muhammad's Birthday Holiday
+    TO_DATE('2022-11-18', 'YYYY-MM-DD'),  -- Special Public Holiday (GE15)
+    TO_DATE('2022-11-19', 'YYYY-MM-DD'),  -- Special Public Holiday (GE15)
+    TO_DATE('2022-11-28', 'YYYY-MM-DD'),  -- Special Public Holiday 28 Nov
+    TO_DATE('2022-12-25', 'YYYY-MM-DD'),  -- Christmas Day
+    TO_DATE('2022-12-26', 'YYYY-MM-DD')   -- Christmas Holiday
+);
+
+
+
+-- Update HOLIDAY_IND for 2023 based on provided holiday dates
+UPDATE date_dim
+SET HOLIDAY_IND = 'Y'
+WHERE year = 2023
+AND cal_date IN (
+    TO_DATE('2023-01-01', 'YYYY-MM-DD'),  -- New Year's Day
+    TO_DATE('2023-01-02', 'YYYY-MM-DD'),  -- New Year Holiday
+    TO_DATE('2023-01-22', 'YYYY-MM-DD'),  -- Chinese New Year
+    TO_DATE('2023-01-23', 'YYYY-MM-DD'),  -- Chinese New Year Holiday
+    TO_DATE('2023-01-24', 'YYYY-MM-DD'),  -- Chinese New Year Holiday
+    TO_DATE('2023-02-06', 'YYYY-MM-DD'),  -- Thaipusam Holiday
+    TO_DATE('2023-04-08', 'YYYY-MM-DD'),  -- Nuzul Al-Quran
+    TO_DATE('2023-04-21', 'YYYY-MM-DD'),  -- Hari Raya Aidilfitri Holiday
+    TO_DATE('2023-04-22', 'YYYY-MM-DD'),  -- Hari Raya Aidilfitri
+    TO_DATE('2023-04-23', 'YYYY-MM-DD'),  -- Hari Raya Aidilfitri Holiday
+    TO_DATE('2023-04-24', 'YYYY-MM-DD'),  -- Hari Raya Aidilfitri Holiday
+    TO_DATE('2023-04-26', 'YYYY-MM-DD'),  -- Sultan of Terengganu's Birthday
+    TO_DATE('2023-05-01', 'YYYY-MM-DD'),  -- Labour Day
+    TO_DATE('2023-05-04', 'YYYY-MM-DD')   -- Wesak Day
+);
+
+
+-- (iii)Assign Malaysia festive code
+-- Update festive_descfor 2021 based on provided holiday dates
+UPDATE date_dim
+SET festive_desc=
+    CASE
+        WHEN cal_date = TO_DATE('2021-01-01', 'YYYY-MM-DD') THEN 'NY'
+        WHEN cal_date = TO_DATE('2021-01-28', 'YYYY-MM-DD') THEN 'Thaipusam'
+        WHEN cal_date = TO_DATE('2021-02-12', 'YYYY-MM-DD') THEN 'CNY'
+        WHEN cal_date = TO_DATE('2021-02-13', 'YYYY-MM-DD') THEN 'CNY'
+        WHEN cal_date = TO_DATE('2021-02-14', 'YYYY-MM-DD') THEN 'CNY'
+        WHEN cal_date = TO_DATE('2021-04-13', 'YYYY-MM-DD') THEN 'Awal Ramadan'
+        WHEN cal_date = TO_DATE('2021-04-29', 'YYYY-MM-DD') THEN 'Al-Quran'
+        WHEN cal_date = TO_DATE('2021-05-01', 'YYYY-MM-DD') THEN 'Labour'
+        WHEN cal_date = TO_DATE('2021-05-13', 'YYYY-MM-DD') THEN 'Raya'
+        WHEN cal_date = TO_DATE('2021-05-14', 'YYYY-MM-DD') THEN 'Raya'
+        WHEN cal_date = TO_DATE('2021-05-26', 'YYYY-MM-DD') THEN 'Wesak'
+        WHEN cal_date = TO_DATE('2021-06-07', 'YYYY-MM-DD') THEN 'Agong'
+        WHEN cal_date = TO_DATE('2021-07-20', 'YYYY-MM-DD') THEN 'Haji'
+        WHEN cal_date = TO_DATE('2021-08-10', 'YYYY-MM-DD') THEN 'Awal Muharram'
+        WHEN cal_date = TO_DATE('2021-08-31', 'YYYY-MM-DD') THEN 'Merdeka'
+        WHEN cal_date = TO_DATE('2021-09-16', 'YYYY-MM-DD') THEN 'Malaysia'
+        WHEN cal_date = TO_DATE('2021-10-19', 'YYYY-MM-DD') THEN 'Prophet Muhammad'
+        WHEN cal_date = TO_DATE('2021-12-25', 'YYYY-MM-DD') THEN 'XMAS'
+        WHEN cal_date = TO_DATE('2021-12-26', 'YYYY-MM-DD') THEN 'XMAS'
+        ELSE NULL -- Set to NULL for non-holiday dates
+    END
+WHERE year = 2021;
+
+
+-- Update festive_descfor 2022 based on provided holiday dates
+UPDATE date_dim
+SET festive_desc=
+    CASE
+        WHEN cal_date = TO_DATE('2022-01-01', 'YYYY-MM-DD') THEN 'NY'
+        WHEN cal_date = TO_DATE('2022-01-18', 'YYYY-MM-DD') THEN 'Thaipusam'
+        WHEN cal_date = TO_DATE('2022-02-01', 'YYYY-MM-DD') THEN 'CNY'
+        WHEN cal_date = TO_DATE('2022-02-02', 'YYYY-MM-DD') THEN 'CNY'
+        WHEN cal_date = TO_DATE('2022-04-19', 'YYYY-MM-DD') THEN 'Al-Quran'
+        WHEN cal_date = TO_DATE('2022-05-01', 'YYYY-MM-DD') THEN 'Labour'
+        WHEN cal_date = TO_DATE('2022-05-02', 'YYYY-MM-DD') THEN 'RAYA'
+        WHEN cal_date = TO_DATE('2022-05-03', 'YYYY-MM-DD') THEN 'RAYA'
+        WHEN cal_date = TO_DATE('2022-05-04', 'YYYY-MM-DD') THEN 'Labour'
+        WHEN cal_date = TO_DATE('2022-05-15', 'YYYY-MM-DD') THEN 'Wesak'
+        WHEN cal_date = TO_DATE('2022-05-16', 'YYYY-MM-DD') THEN 'Wesak'
+        WHEN cal_date = TO_DATE('2022-06-06', 'YYYY-MM-DD') THEN 'Agong'
+        WHEN cal_date = TO_DATE('2022-07-10', 'YYYY-MM-DD') THEN 'Haji'
+        WHEN cal_date = TO_DATE('2022-08-31', 'YYYY-MM-DD') THEN 'Merdeka'
+        WHEN cal_date = TO_DATE('2022-09-16', 'YYYY-MM-DD') THEN 'Malaysia'
+        WHEN cal_date = TO_DATE('2022-10-09', 'YYYY-MM-DD') THEN 'Prophet Muhammad'
+        WHEN cal_date = TO_DATE('2022-10-10', 'YYYY-MM-DD') THEN 'Prophet Muhammad'
+        WHEN cal_date = TO_DATE('2022-11-18', 'YYYY-MM-DD') THEN 'GE15'
+        WHEN cal_date = TO_DATE('2022-11-19', 'YYYY-MM-DD') THEN 'GE15'
+        WHEN cal_date = TO_DATE('2022-11-28', 'YYYY-MM-DD') THEN 'GE15'
+        WHEN cal_date = TO_DATE('2022-12-25', 'YYYY-MM-DD') THEN 'XMAS'
+        WHEN cal_date = TO_DATE('2022-12-26', 'YYYY-MM-DD') THEN 'XMAS'
+        ELSE NULL -- Set to NULL for non-holiday dates
+    END
+WHERE year = 2022;
+
+
+
+-- Update festive_descfor 2023 based on provided holiday dates
+UPDATE date_dim
+SET festive_desc=
+    CASE
+        WHEN cal_date = TO_DATE('2023-01-01', 'YYYY-MM-DD') THEN 'NY'
+        WHEN cal_date = TO_DATE('2023-01-02', 'YYYY-MM-DD') THEN 'NY'
+        WHEN cal_date = TO_DATE('2023-01-22', 'YYYY-MM-DD') THEN 'CNY'
+        WHEN cal_date = TO_DATE('2023-01-23', 'YYYY-MM-DD') THEN 'CNY'
+        WHEN cal_date = TO_DATE('2023-01-24', 'YYYY-MM-DD') THEN 'CNY'
+        WHEN cal_date = TO_DATE('2023-02-06', 'YYYY-MM-DD') THEN 'Thaipusam '
+        WHEN cal_date = TO_DATE('2023-04-08', 'YYYY-MM-DD') THEN 'Al-Quran'
+        WHEN cal_date = TO_DATE('2023-04-21', 'YYYY-MM-DD') THEN 'RAYA'
+        WHEN cal_date = TO_DATE('2023-04-22', 'YYYY-MM-DD') THEN 'RAYA'
+        WHEN cal_date = TO_DATE('2023-04-23', 'YYYY-MM-DD') THEN 'RAYA'
+        WHEN cal_date = TO_DATE('2023-04-24', 'YYYY-MM-DD') THEN 'RAYA'
+        WHEN cal_date = TO_DATE('2023-05-01', 'YYYY-MM-DD') THEN 'Labour'
+        WHEN cal_date = TO_DATE('2023-05-04', 'YYYY-MM-DD') THEN 'Wesak'
+        ELSE NULL -- Set to NULL for non-holiday dates
+    END
+WHERE year = 2023;
+
+
+UPDATE date_dim
+SET festive_desc= UPPER(festive_desc);
+
+--(iv) Assign month_no
+-- Minimum and Maximum cal_date and date_key values
+SELECT MIN(cal_date) AS min_cal_date,
+       MAX(cal_date) AS max_cal_date,
+       MIN(date_key) AS min_date_key,
+       MAX(date_key) AS max_date_key
+FROM date_dim;
+
+
+--MIN_CAL_DA MAX_CAL_DA MIN_DATE_KEY MAX_DATE_KEY
+---------- ---------- ------------ ------------
+--2021-01-06 2023-05-31        10001        10876
+
+select count(*) as "date_dim total" 
+from date_dim;
+--877 rows
+COMMIT;

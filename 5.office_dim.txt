@@ -1,0 +1,147 @@
+DROP TABLE office_dim;
+CREATE TABLE office_dim (
+    officeKey       NUMBER(11) NOT NULL,
+    officeCode	    VARCHAR(10) NOT NULL,
+    city		    VARCHAR(50) NOT NULL,
+    phone		    VARCHAR(50) NOT NULL,
+    addressLine1	VARCHAR(50) NOT NULL,
+    addressLine2	VARCHAR(50) DEFAULT NULL,
+    state		    VARCHAR(50) DEFAULT NULL,
+    country		    VARCHAR(50) NOT NULL,
+    postalCode	    VARCHAR(15) NOT NULL,
+    territory	    VARCHAR(10) NOT NULL,
+    PRIMARY KEY (officeKey)
+);
+
+-- (i)To generate 350 records in the temp_office_unique table with unique officeNumber values starting from 500 and incrementing by 1,
+DROP TABLE temp_office;
+DROP TABLE temp_office_unique;
+-- Create a new table to hold the unique office data
+CREATE TABLE temp_office AS SELECT * FROM offices;
+CREATE TABLE temp_office_unique AS SELECT * FROM offices WHERE 1=0;
+
+
+-- Create a sequence to generate unique office numbers starting from 500
+drop sequence office_number_sequence;
+CREATE SEQUENCE office_number_sequence
+  START WITH 8
+  INCREMENT BY 1;
+
+-- Loop to insert 350 records into the temp_office table with unique office numbers
+DECLARE
+-- Initialize v_record_count
+  v_counter NUMBER := 0;
+BEGIN
+--  WHILE v_counter < 50 LOOP
+    WHILE v_counter < 1 LOOP
+    INSERT INTO temp_office (officeCode, city, phone, addressLine1, addressLine2, state, country, postalCode, territory)
+    SELECT office_number_sequence.NEXTVAL, city, phone, addressLine1, addressLine2, state, country, postalCode, territory
+    FROM offices;
+    
+    v_counter := v_counter + 1;
+  END LOOP;
+END;
+/
+-- Append the generated records at the end of temp_office
+INSERT INTO temp_office
+SELECT * FROM temp_office_unique;
+
+SELECT COUNT(*) as "Records in temp_office" FROM temp_office;
+--  350
+
+--(ii) Assign the random state & city to new_office
+
+DROP TABLE new_office;
+CREATE TABLE new_office AS SELECT * FROM office_dim WHERE 1=0;
+
+drop sequence office_sequence;
+create sequence office_sequence
+start with 100001
+increment by 1;
+
+DECLARE
+  CURSOR office_cur IS
+    SELECT *
+    FROM temp_office
+    ORDER BY officeCode;
+
+  t_rec office_cur%ROWTYPE;
+
+  v_city VARCHAR(30);
+  v_state VARCHAR(30);
+  v_ID NUMBER;
+
+
+BEGIN
+  FOR t_rec IN office_cur LOOP
+    -- Assign state and city randomly
+    -- Generate a random v_ID within a valid range
+    v_ID := TRUNC(DBMS_RANDOM.VALUE(10001, 10042));
+
+    -- Query the StateAndCity table to get city and state for the generated v_ID
+    SELECT city, state INTO v_city, v_state
+    FROM StateAndCity
+    WHERE StateAndCityID = v_ID;
+
+
+    -- Insert into new_office
+    INSERT INTO new_office (
+        officeKey,
+        officeCode,
+        city,
+        phone,
+        addressLine1,
+        addressLine2,
+        state,
+        country,
+        postalCode,
+        territory
+    )
+    VALUES (
+        office_sequence.NEXTVAL,
+        t_rec.officeCode,
+        v_city,
+        t_rec.phone,
+        t_rec.addressLine1,
+        t_rec.addressLine2,
+        v_state,
+        t_rec.country,
+        t_rec.postalCode,
+        t_rec.territory
+    );
+  END LOOP;
+END;
+/
+
+SELECT COUNT(*) as "Records in new_office"
+FROM new_office;
+
+-- (iii) Copy data in new_office to office_dim 
+delete office_dim;
+ drop sequence office_seq;
+ create sequence office_seq
+ start with 100001
+ increment by 1;
+
+-- ETL for office_dim
+ insert into office_dim
+ select office_seq.nextval,
+        officeCode,
+        upper(city),
+        phone,
+        upper(substr(addressLine1,1,50)),
+        upper(substr(addressLine2,1,50)),
+        upper(state),
+        upper(country),
+        postalCode,
+        upper(territory)
+ from new_office;
+
+-- (iv) Update all country into Malaysia
+UPDATE office_dim
+SET country = 'Malaysia';
+
+select count(*) as "office_dim total" 
+from office_dim;
+--350 rows
+COMMIT;
